@@ -71,3 +71,4 @@ class UserService:
         user = UserService.get_user_by_id(db=db, id=user_id)
 
         db.delete(user)
+        db.commit()
