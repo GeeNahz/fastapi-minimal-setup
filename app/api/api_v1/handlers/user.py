@@ -1,6 +1,6 @@
 import uuid
 from sqlalchemy.orm import Session
-from typing import Annotated, List
+from typing import Annotated, List, Union
 
 from fastapi import (
     APIRouter,
@@ -57,7 +57,7 @@ async def update_me(
 
 @user_router.put("/{user_id}", summary="Update a user", response_model=User)
 async def update_user(
-    user_id: str | uuid.uuid4,
+    user_id: Union[str, uuid.uuid4],
     user: UserUpdate,
     service: Annotated[
         UserService,
@@ -71,7 +71,7 @@ async def update_user(
 
 @user_router.delete("/", summary="Delete a user")
 async def delete_user(
-    user_id: str | uuid.uuid4,
+    user_id: Union[str, uuid.uuid4],
     user: Annotated[
         User,
         Depends(user_deps.get_current_active_user),
@@ -103,7 +103,7 @@ async def get_users(
 
 @user_router.get("/{user_id}/", summary="Get user by id", response_model=User)
 async def get_user(
-    user_id: str | uuid.uuid4,
+    user_id: Union[str, uuid.uuid4],
     active_user: Annotated[
         User,
         Depends(user_deps.get_current_active_user),
