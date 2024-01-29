@@ -17,7 +17,7 @@ config = context.config
 # this is necessary because when the app goes live,
 # there will be need to get the db string from environment 
 # and that can't be done from the .ini file.
-config.set_main_option("sqlalchemy.url", db_config.settings.DATABASE_CONNECTION_STRING)
+config.set_main_option("sqlalchemy.url", db_config.settings.DATABASE_CONNECTION_STR)
 # -----------------------------
 
 # Interpret the config file for Python logging.
