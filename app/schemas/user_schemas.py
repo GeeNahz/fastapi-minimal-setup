@@ -1,4 +1,5 @@
-from pydantic import BaseModel
+import uuid
+from pydantic import BaseModel, UUID4
 from typing import Optional
 
 
@@ -29,7 +30,7 @@ class UserUpdate(BaseModel):
 
 
 class User(BaseUser):
-    id: int
+    id: UUID4
     is_active: bool
 
     class ConfigDict:
