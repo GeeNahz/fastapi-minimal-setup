@@ -1,7 +1,7 @@
 import uuid
 from fastapi import BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from typing import Annotated, Optional
+from typing import Annotated, Optional, Union
 
 from app.api.dependencies.db_deps import get_db
 from app.core.security import create_access_token, create_refresh_token
@@ -48,7 +48,7 @@ class UserService:
     ) -> list[repo.user_schemas.User]:
         return self.repo.list(limit=limit, skip=skip)
 
-    def get_user_by_id(self, user_id: str | uuid.uuid4) -> repo.user_schemas.User:
+    def get_user_by_id(self, user_id: Union[str, uuid.uuid4]) -> repo.user_schemas.User:
         user = self.repo.get(id=user_id)
 
         return user
@@ -114,7 +114,7 @@ class UserService:
 
     def update_user(
         self,
-        user_id: uuid.uuid4 | str,
+        user_id: Union[str, uuid.uuid4],
         user_update: repo.user_schemas.UserUpdate,
     ) -> repo.user_schemas.User:
         updated_user = self.repo.update(id=user_id, obj=user_update)
@@ -124,7 +124,7 @@ class UserService:
     def delete_user(
         self,
         user: repo.user_schemas.User,
-        user_id: str | uuid.uuid4,
+        user_id: Union[str, uuid.uuid4],
     ) -> int:
         if user_id == user.id or user.role == "admin":
             self.repo.delete(id=user_id)
