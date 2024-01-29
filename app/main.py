@@ -8,6 +8,8 @@ app = FastAPI(
     openapi_url=f"{config.settings.API_V1_STR}/openapi.json"
 )
 
-db_config.Base.metadata.create_all(bind=db_config.engine)
+# create databases
+# disabled since alembic is in use
+# db_config.Base.metadata.create_all(bind=db_config.engine)
 
 app.include_router(router=api_v1_router, prefix=config.settings.API_V1_STR)
