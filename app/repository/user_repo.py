@@ -1,4 +1,4 @@
-from typing import Any, Optional
+from typing import Any, Optional, Union
 import uuid
 import sqlalchemy
 from sqlalchemy.orm import Session
@@ -8,9 +8,9 @@ from fastapi import HTTPException, status
 from app.core.security import generate_password_hash, verify_password
 
 from app.models.user_model import User
-from app.models.profile_model import Profile
+# from app.models.profile_model import Profile
 from app.repository.base_repo import BaseRepository
-from app.schemas import user_schemas, profile_schemas, token_schema
+from app.schemas import user_schemas, token_schema
 
 
 class UserRepository(
@@ -38,7 +38,6 @@ class UserRepository(
     def create(
         self,
         user: user_schemas.UserCreate | user_schemas.UserCreateSuperuser,
-        profile: Profile | None,
     ) -> User:
         hashed_password = generate_password_hash(password=user.password)
 
@@ -68,7 +67,6 @@ class UserRepository(
     def create_superuser(
         self,
         user: user_schemas.UserCreate,
-        profile: Profile | None,
     ) -> User:
         superuser = user_schemas.UserCreateSuperuser(
             user.model_dump(exclude_unset=True),
@@ -85,7 +83,7 @@ class UserRepository(
         self,
         email: str | None = None,
         username: str | None = None,
-        id: str | uuid.uuid4 | None = None,
+        id: Union[str, uuid.uuid4] | None = None,
     ) -> Optional[User]:
         if email is not None:
             stmt = sqlalchemy.select(self.model).where(self.model.email == email)

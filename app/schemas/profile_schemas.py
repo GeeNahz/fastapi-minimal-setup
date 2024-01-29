@@ -21,5 +21,5 @@ class Profile(BaseProfile):
     created_at: datetime
     modified_at: datetime
 
-    class Config:
+    class ConfigDict:
         from_attributes = True
