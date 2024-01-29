@@ -5,7 +5,7 @@ from fastapi import HTTPException, status
 from pydantic import BaseModel
 from typing import Any, Generic, List, Optional, Type, TypeVar
 
-from core.db_config import Base
+from app.core.db_config import Base
 
 ModelType = TypeVar("ModelType", bound=Base)
 CreateSchemaType = TypeVar("CreateSchemaType", bound=BaseModel)
