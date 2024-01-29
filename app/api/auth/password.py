@@ -5,8 +5,8 @@ from fastapi import APIRouter, Depends, status, HTTPException
 from jose import jwt, JWTError
 from pydantic import ValidationError
 
-from core.config import settings
-from core.security import create_access_token, generate_hashed_password, verify_password
+from app.core.config import settings
+from app.core.security import create_access_token, generate_password_hash, verify_password
 from app.schemas.email_schemas import EmailBody, EmailData, EmailPayload
 from app.schemas.password_schemas import PasswordChange
 from app.schemas.token_schema import TokenPayload
@@ -81,7 +81,7 @@ async def reset_password(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    new_password = generate_hashed_password(password=password)
+    new_password = generate_password_hash(password=password)
     user_password_update = UserUpdate(
         hashed_password=new_password,
     )
