@@ -1,74 +1,147 @@
-from fastapi import HTTPException, status
+import uuid
+from fastapi import BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from typing import Optional
+from typing import Annotated, Optional
 
-from app.models.user_model import User
-from app.schemas import user_schema
-from app.core.security import generate_password_hash, verify_password
+from app.api.dependencies.db_deps import get_db
+from app.core.security import create_access_token, create_refresh_token
+from app.repository import user_repo as repo, profile_repo
+from app.utils.validation import email_vaildation
+
+
+def create_profile(user, db):
+    new_profile = profile_repo.profile_schemas.ProfileCreate(
+        firstname=user.firstname,
+        lastname=user.lastname,
+    )
+    profile: profile_repo.Profile = profile_repo.ProfileRepository(
+        db_session=db
+    ).create(obj=new_profile)
+
+    return profile
+
 
 class UserService:
-    @staticmethod
-    def authenticate(db: Session, email: str, password: str) -> Optional[user_schema.User]:
-        user = UserService.get_user_by_email(db=db, email=email)
-        if not user:
-            return None
-        if not verify_password(password=password, hashed_password=user.hashed_password):
-            return None
-        
-        return user
+    def __init__(self, db: Session) -> None:
+        self.db = db
+        self.repo = repo.UserRepository(db_session=self.db)
 
-    @staticmethod
-    def get_user_by_email(db: Session, email: str) -> User:
-        user = db.query(User).filter(User.email == email).first()
-        return user
-
-    @staticmethod
-    def get_user_by_id(db: Session, id: int) -> user_schema.User:
-        user = db.query(User).filter(User.id == id).first()
-        if not user:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"User with id {id} not found"
-            )
-        return user
-
-    @staticmethod
-    def get_all_users(db: Session) -> list[user_schema.User]:
-        return db.query(User).all()
-
-    @staticmethod
-    def create_user(db: Session, user: user_schema.UserCreate) -> user_schema.User:
-        password_hash = generate_password_hash(user.password)
-        new_user = User(
-            email=user.email,
-            username=user.username,
-            firstname=user.firstname,
-            lastname=user.lastname,
-            hashed_password=password_hash
+    def authenticate(
+        self, email: str, password: str
+    ) -> Optional[repo.token_schema.TokenSchema]:
+        user = self.repo.authenticate(
+            email=email,
+            password=password,
         )
-        db.add(new_user)
-        db.commit()
-        db.refresh(new_user)
+        tokens = repo.token_schema.TokenSchema(
+            access_token=create_access_token(sub=user.id),
+            refresh_token=create_refresh_token(sub=user.id),
+            token_type="bearer",
+        )
 
-        return new_user
+        return tokens
 
-    @staticmethod
-    def update_user(db: Session, user_id: int, updates: user_schema.UserUpdate) -> user_schema.User:
-        user_data = UserService.get_user_by_id(db=db, id=user_id)
+    def get_all_users(
+        self,
+        limit: int = 100,
+        skip: int = 0,
+    ) -> list[repo.user_schemas.User]:
+        return self.repo.list(limit=limit, skip=skip)
 
-        user_data.email = updates.email or user_data.email
-        user_data.firstname = updates.firstname or user_data.firstname
-        user_data.lastname = updates.lastname or user_data.lastname
-        user_data.username = updates.username or user_data.username
+    def get_user_by_id(self, user_id: str | uuid.uuid4) -> repo.user_schemas.User:
+        user = self.repo.get(id=user_id)
 
-        db.commit()
-        db.refresh(user_data)
+        return user
 
-        return user_data
+    def get_user_by_username(self, username: str) -> repo.user_schemas.User:
+        user = self.repo.get(username=username)
 
-    @staticmethod
-    def delete_user(db: Session, user_id: int):
-        user = UserService.get_user_by_id(db=db, id=user_id)
+        return user
 
-        db.delete(user)
-        db.commit()
+    def get_user_by_email(self, email: str) -> repo.user_schemas.User:
+        user = self.repo.get(email=email)
+
+        return user
+
+    def user_exists(self, user: repo.user_schemas.UserCreate) -> bool:
+        return self.repo.email_already_exists(
+            email=user.email
+        ) or self.repo.username_already_exists(username=user.username)
+
+    async def create_user(
+        self,
+        user: repo.user_schemas.UserCreate,
+        background_tasks: BackgroundTasks,
+        role: str | None,
+    ) -> repo.token_schema.TokenSchema:
+        if self.user_exists(user=user):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Email or username already exists",
+            )
+
+        new_user = self.repo.create(user=user) # can pass profile here
+
+        access_token = create_access_token(sub=new_user.id)
+
+        tokens = repo.token_schema.TokenSchema(
+            access_token=access_token,
+            refresh_token=create_refresh_token(sub=new_user.id),
+            token_type="bearer",
+        )
+
+        # email validation
+        # email_vaildation(
+        #     background_tasks=background_tasks,
+        #     access_token=access_token,
+        #     new_user=new_user,
+        # )
+
+        return tokens
+
+    async def create_superuser(
+        self,
+        user: repo.user_schemas.UserCreate,
+    ) -> repo.token_schema.TokenSchema:
+        if self.user_exists(user=user):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Email or username already exists",
+            )
+
+        new_user = self.repo.create_superuser(user=user)
+        pass
+
+    def update_user(
+        self,
+        user_id: uuid.uuid4 | str,
+        user_update: repo.user_schemas.UserUpdate,
+    ) -> repo.user_schemas.User:
+        updated_user = self.repo.update(id=user_id, obj=user_update)
+
+        return updated_user
+
+    def delete_user(
+        self,
+        user: repo.user_schemas.User,
+        user_id: str | uuid.uuid4,
+    ) -> int:
+        if user_id == user.id or user.role == "admin":
+            self.repo.delete(id=user_id)
+
+            return user_id
+
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Unauthorized to perform this action",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    def verify_user(self, user: repo.user_schemas.User) -> repo.user_schemas.User:
+        verified_user = self.repo.verify_user(user=user)
+
+        return verified_user
+
+
+def user_service_dep(db: Annotated[Session, Depends(get_db)]) -> UserService:
+    return UserService(db=db)

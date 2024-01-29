@@ -1,40 +1,117 @@
-from fastapi import APIRouter, HTTPException, Depends, status
+import uuid
 from sqlalchemy.orm import Session
-from typing import Annotated
+from typing import Annotated, List
 
-from app.api.dependencies import db_deps
-from app.schemas.user_schema import UserCreate, UserUpdate, User
-from app.services.user_service import UserService
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    status,
+)
+
+from app.api.dependencies import db_deps, user_deps
+from app.schemas.user_schemas import UserCreate, UserUpdate, User
+from app.schemas.token_schema import TokenSchema
+from app.services.user_service import UserService, user_service_dep
 
 user_router = APIRouter()
 
 
-@user_router.post("/create/", summary="Create a user", response_model=User)
-async def create(user: UserCreate, db: Annotated[Session, Depends(db_deps.get_db)]):
-    email_exists = UserService.get_user_by_email(db=db, email=user.email)
-    if email_exists:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Email already exists"
-        )
-    new_user = UserService.create_user(db=db, user=user)
-    return new_user
+@user_router.post(
+    "/",
+    summary="Create a user",
+    response_model=TokenSchema,
+)
+async def create_user(
+    user: UserCreate,
+    service: Annotated[
+        UserService,
+        Depends(user_service_dep),
+    ],
+    background_tasks: BackgroundTasks,
+    role: str = None,
+):
+    tokens = await service.create_user(
+        user=user, background_tasks=background_tasks, role=role
+    )
 
-@user_router.put("/update/{user_id}", summary="Update a user", response_model=User)
-async def update(user_id: int, user: UserUpdate, db: Annotated[Session, Depends(db_deps.get_db)]):
-    updated_user = UserService.update_user(db=db, user_id=user_id, updates=user)
+    return tokens
+
+
+@user_router.put("/update-me", summary="update current user", response_model=User)
+async def update_me(
+    user: UserUpdate,
+    current_user: Annotated[
+        User,
+        Depends(user_deps.get_current_active_user),
+    ],
+    service: Annotated[
+        UserService,
+        Depends(user_service_dep),
+    ],
+):
+    updated_user_data = service.update_user(user_id=current_user.id, user_update=user)
+
+    return updated_user_data
+
+
+@user_router.put("/{user_id}", summary="Update a user", response_model=User)
+async def update_user(
+    user_id: str | uuid.uuid4,
+    user: UserUpdate,
+    service: Annotated[
+        UserService,
+        Depends(user_service_dep),
+    ],
+):
+    updated_user = service.update_user(user_id=user_id, user_update=user)
+
     return updated_user
 
-@user_router.delete("/delete/", summary="Delete a user")
-async def delete(user_id: int, db: Annotated[Session, Depends(db_deps.get_db)]):
-    UserService.delete_user(db=db, user_id=user_id)
-    return { "message": status.HTTP_204_NO_CONTENT, "detail": "User deleted" }
 
-@user_router.get("/all/", summary="Get all user", response_model=list[User])
-async def all_users(db: Annotated[Session, Depends(db_deps.get_db)]):
-    return UserService.get_all_users(db=db)
+@user_router.delete("/", summary="Delete a user")
+async def delete_user(
+    user_id: str | uuid.uuid4,
+    user: Annotated[
+        User,
+        Depends(user_deps.get_current_active_user),
+    ],
+    service: Annotated[
+        UserService,
+        Depends(user_service_dep),
+    ],
+):
+    service.delete_user(user=user, user_id=user_id)
 
-@user_router.get("/{user_id}/", summary="Get user by their id", response_model=User)
-async def one_user(user_id: int, db: Annotated[Session, Depends(db_deps.get_db)]):
-    user = UserService.get_user_by_id(db=db, id=user_id)
-    return user
+    return {
+        "message": status.HTTP_204_NO_CONTENT,
+        "detail": "User deleted",
+    }
+
+
+@user_router.get("/", summary="Get all user", response_model=List[User])
+async def get_users(
+    service: Annotated[
+        UserService,
+        Depends(user_service_dep),
+    ],
+    limit: int = None,
+    skip: int = None,
+):
+    return service.get_all_users(limit=limit, skip=skip)
+
+
+@user_router.get("/{user_id}/", summary="Get user by id", response_model=User)
+async def get_user(
+    user_id: str | uuid.uuid4,
+    active_user: Annotated[
+        User,
+        Depends(user_deps.get_current_active_user),
+    ],
+    service: Annotated[
+        UserService,
+        Depends(user_service_dep)
+    ],
+    db: Annotated[Session, Depends(db_deps.get_db)],
+):
+    return service.get_user_by_id(user_id=user_id)
